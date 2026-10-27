@@ -90,6 +90,13 @@ label.fld .in{text-transform:none;letter-spacing:0;font-size:16px}
 .x{background:var(--soft);border:0;border-radius:10px;width:38px;height:38px;font-size:22px;cursor:pointer;color:var(--ink);flex:none}
 .helpgrid{display:grid;gap:12px}
 .helpgrid section{background:var(--soft);border-radius:14px;padding:14px 16px;display:grid;gap:6px}
+.csvwrap{overflow-x:auto;border:2px solid var(--line);border-radius:12px}
+.csvwrap table{border-collapse:collapse;font-size:13px;white-space:nowrap;width:100%}
+.csvwrap th,.csvwrap td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left}
+.csvwrap th{background:var(--soft);font-weight:900}
+.csvwrap tr:last-child td{border-bottom:0}
+.csvrules{margin:0;padding-left:20px;display:grid;gap:5px;font-size:14px;line-height:1.5}
+label.btn{cursor:pointer}
 .helpgrid ol{margin:4px 0 0;padding-left:20px;line-height:1.55;font-weight:700}
 
 /* ---------- home ---------- */
@@ -341,6 +348,16 @@ body.flash-bad{background-color:#c9323f;background-image:none}
 .spinner{width:54px;height:54px;border-radius:50%;border:6px solid rgba(255,255,255,.25);border-top-color:var(--gold);animation:spin .8s linear infinite}
 .profile{display:grid;gap:16px}
 .profile .namerow{display:flex;gap:8px}
+.funin{font-family:var(--f-display)!important;font-weight:400!important;font-size:28px!important;text-align:center;color:var(--a5)!important;padding:14px!important}
+.funin[readonly]{background:var(--soft);cursor:default}
+.funin.pop{animation:nickbump .35s ease-out}
+@keyframes nickbump{0%{transform:scale(1)}40%{transform:scale(1.05);background:#fff6d8}100%{transform:scale(1)}}
+.ordiv{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;font-weight:900;text-transform:uppercase;letter-spacing:.06em}
+.ordiv::before,.ordiv::after{content:"";flex:1;height:2px;background:var(--line)}
+.inirow{display:flex;gap:10px;align-items:flex-end}
+.inirow .fld{flex:1;min-width:0}
+.iniin{text-transform:uppercase;text-align:center;font-family:var(--f-display)!important;font-weight:400!important;font-size:24px!important;letter-spacing:.2em}
+.inirow .btn{padding-block:14px}
 .profile .namerow .in{flex:1;min-width:0;font-size:22px;text-align:center}
 .avgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;max-height:300px;overflow:auto;padding:4px}
 .avpick{border:3px solid transparent;background:var(--soft);border-radius:14px;padding:6px;cursor:pointer;aspect-ratio:1/1;display:grid;place-items:center}
@@ -442,8 +459,9 @@ function toast(text, kind = '') {
   const el = document.createElement('div');
   el.className = 'toast ' + kind; el.textContent = text;
   $('#toasts').appendChild(el);
-  setTimeout(() => el.classList.add('out'), 2700);
-  setTimeout(() => el.remove(), 3100);
+  const ms = 2700 + Math.min(6000, text.length * 35);
+  setTimeout(() => el.classList.add('out'), ms);
+  setTimeout(() => el.remove(), ms + 400);
 }
 function copyText(text, fallbackEl) {
   const fb = () => { if (fallbackEl) { fallbackEl.focus(); fallbackEl.select(); toast('Selected. Press Ctrl+C or ⌘C to copy.'); } else toast('Copy didn’t work here', 'bad'); };
@@ -566,8 +584,66 @@ const CHEST_SVG = `<svg viewBox="0 0 120 100" aria-hidden="true"><rect x="10" y=
    ============================================================ */
 const ADJ = ['Lucky', 'Turbo', 'Fuzzy', 'Cosmic', 'Sneaky', 'Mighty', 'Tiny', 'Wiggly', 'Brave', 'Sunny', 'Zippy', 'Jolly', 'Spicy', 'Sparkly', 'Bouncy', 'Sleepy', 'Crafty', 'Shiny', 'Rapid', 'Golden'];
 const NOUN = ['Otter', 'Pickle', 'Comet', 'Waffle', 'Noodle', 'Badger', 'Taco', 'Rocket', 'Muffin', 'Panda', 'Llama', 'Pretzel', 'Narwhal', 'Walrus', 'Dumpling', 'Gecko', 'Mango', 'Yeti', 'Biscuit', 'Koala'];
-const randName = () => ADJ[rnd(0, ADJ.length - 1)] + NOUN[rnd(0, NOUN.length - 1)];
-const cleanName = s => String(s || '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 15);
+/* Fun names: one silly word per initial. "SM" -> SlimeyMule, "JKL" -> JigglyKrustyLlama */
+const FUN = {
+  A: { a: ['Angry', 'Awkward', 'Atomic', 'Absurd', 'Anxious', 'Achy', 'Antsy'], n: ['Avocado', 'Alpaca', 'Armpit', 'Anchovy', 'Aardvark', 'Accordion', 'Asparagus'] },
+  B: { a: ['Bouncy', 'Bald', 'Bonkers', 'Burpy', 'Bossy', 'Bubbly', 'Bumbling', 'Beefy'], n: ['Burrito', 'Baboon', 'Bagel', 'Badger', 'Blobfish', 'Banana', 'Biscuit', 'Beanbag'] },
+  C: { a: ['Cranky', 'Crusty', 'Clumsy', 'Cheesy', 'Chunky', 'Crispy', 'Cosmic', 'Chubby'], n: ['Cabbage', 'Chicken', 'Cactus', 'Crouton', 'Camel', 'Clam', 'Cupcake', 'Coconut'] },
+  D: { a: ['Dizzy', 'Derpy', 'Dramatic', 'Dusty', 'Dapper', 'Drowsy', 'Dorky', 'Drippy'], n: ['Donkey', 'Dumpling', 'Doughnut', 'Dingo', 'Dodo', 'Duck', 'Doodle', 'Dino'] },
+  E: { a: ['Eggy', 'Extra', 'Electric', 'Edgy', 'Epic', 'Eerie', 'Elastic'], n: ['Eggplant', 'Emu', 'Eel', 'Elbow', 'Eggroll', 'Earwax', 'Eyebrow'] },
+  F: { a: ['Funky', 'Fluffy', 'Fishy', 'Feral', 'Fancy', 'Floppy', 'Frantic', 'Fuzzy'], n: ['Ferret', 'Flamingo', 'Fajita', 'Frog', 'Fungus', 'Fries', 'Flapjack', 'Fishstick'] },
+  G: { a: ['Goofy', 'Grumpy', 'Greasy', 'Gooey', 'Giggly', 'Gnarly', 'Gassy', 'Glitchy'], n: ['Goose', 'Goblin', 'Gerbil', 'Gnome', 'Gravy', 'Gumdrop', 'Goat', 'Gopher'] },
+  H: { a: ['Hairy', 'Hangry', 'Hyper', 'Honking', 'Hasty', 'Hiccupy', 'Huffy', 'Hefty'], n: ['Hamster', 'Hippo', 'Hotdog', 'Haggis', 'Hedgehog', 'Hyena', 'Hamburger', 'Hobbit'] },
+  I: { a: ['Itchy', 'Icy', 'Iconic', 'Irate', 'Illegal', 'Inky', 'Impish'], n: ['Iguana', 'Igloo', 'Icicle', 'Imp', 'Ibex', 'Icecube', 'Inchworm'] },
+  J: { a: ['Jiggly', 'Jumpy', 'Jazzy', 'Juicy', 'Janky', 'Jolly', 'Jittery', 'Jelly'], n: ['Jellybean', 'Jalapeno', 'Jackal', 'Jester', 'Jaguar', 'Jambalaya', 'Jawbone', 'Jellyfish'] },
+  K: { a: ['Kooky', 'Krusty', 'Klutzy', 'Knobby', 'Kranky', 'Kickin'], n: ['Kumquat', 'Kangaroo', 'Koala', 'Kebab', 'Kazoo', 'Kiwi', 'Krill', 'Kitten'] },
+  L: { a: ['Lumpy', 'Loopy', 'Lazy', 'Leaky', 'Loud', 'Lanky', 'Lucky', 'Limp'], n: ['Llama', 'Lobster', 'Lasagna', 'Lemur', 'Lettuce', 'Lizard', 'Leprechaun', 'Lollipop'] },
+  M: { a: ['Moist', 'Mushy', 'Musty', 'Mighty', 'Manic', 'Mopey', 'Moldy', 'Mega'], n: ['Mule', 'Muffin', 'Meatball', 'Moose', 'Mango', 'Marmot', 'Mollusk', 'Macaroni'] },
+  N: { a: ['Nutty', 'Nerdy', 'Noisy', 'Nifty', 'Nervous', 'Nosy', 'Naughty', 'Nimble'], n: ['Noodle', 'Narwhal', 'Nugget', 'Nacho', 'Newt', 'Nostril', 'Nectarine', 'Ninja'] },
+  O: { a: ['Oily', 'Odd', 'Oozy', 'Ornery', 'Overcooked', 'Orange', 'Obnoxious'], n: ['Otter', 'Ostrich', 'Onion', 'Omelet', 'Octopus', 'Oyster', 'Oatmeal', 'Ogre'] },
+  P: { a: ['Pudgy', 'Peppy', 'Prickly', 'Puffy', 'Petty', 'Pickled', 'Plucky', 'Pungent'], n: ['Pickle', 'Potato', 'Penguin', 'Pancake', 'Platypus', 'Pigeon', 'Pretzel', 'Possum'] },
+  Q: { a: ['Quirky', 'Quacky', 'Queasy', 'Quick', 'Quiet', 'Quizzical'], n: ['Quokka', 'Quail', 'Quiche', 'Quesadilla', 'Quack', 'Quarterback'] },
+  R: { a: ['Rowdy', 'Rusty', 'Rubbery', 'Rancid', 'Raging', 'Rickety', 'Rotten', 'Radical'], n: ['Raccoon', 'Radish', 'Ravioli', 'Rhino', 'Rooster', 'Raisin', 'Rutabaga', 'Robot'] },
+  S: { a: ['Slimey', 'Soggy', 'Sneaky', 'Sassy', 'Spicy', 'Stinky', 'Squishy', 'Sweaty'], n: ['Sloth', 'Sausage', 'Squid', 'Spud', 'Sardine', 'Skunk', 'Snail', 'Spaghetti'] },
+  T: { a: ['Tiny', 'Toasty', 'Twitchy', 'Tubby', 'Thirsty', 'Turbo', 'Tangy', 'Tired'], n: ['Taco', 'Turnip', 'Toad', 'Turkey', 'Tater', 'Tortilla', 'Toaster', 'Trombone'] },
+  U: { a: ['Unhinged', 'Uppity', 'Unwashed', 'Ultra', 'Uncool', 'Unruly', 'Upsidedown'], n: ['Unicorn', 'Urchin', 'Udon', 'Ukulele', 'Umbrella', 'Underpants'] },
+  V: { a: ['Vexed', 'Vibing', 'Velvet', 'Vain', 'Volcanic', 'Viral', 'Vicious'], n: ['Vulture', 'Veggie', 'Viper', 'Vole', 'Volcano', 'Vampire', 'Vacuum'] },
+  W: { a: ['Wobbly', 'Wonky', 'Wiggly', 'Weird', 'Whiny', 'Wacky', 'Wet', 'Wheezy'], n: ['Waffle', 'Walrus', 'Weasel', 'Wombat', 'Wasabi', 'Worm', 'Warthog', 'Wizard'] },
+  X: { a: ['Xtreme', 'Xtra', 'Xotic', 'Xpert'], n: ['Xylophone', 'Xerus', 'Xray', 'Xenopus'] },
+  Y: { a: ['Yappy', 'Yucky', 'Yeasty', 'Yodeling', 'Yawning', 'Yummy', 'Yelling'], n: ['Yak', 'Yeti', 'Yam', 'Yogurt', 'Yoyo', 'Yodeler', 'Yolk'] },
+  Z: { a: ['Zany', 'Zesty', 'Zippy', 'Zonked', 'Zombie', 'Zealous', 'Zappy'], n: ['Zebra', 'Zucchini', 'Zeppelin', 'Ziti', 'Zombie', 'Zamboni', 'Zit'] }
+};
+const NAME_MAX = 20;
+const cleanIni = s => String(s || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 3);
+const pickOf = arr => arr[rnd(0, arr.length - 1)];
+function funName(ini) {
+  ini = cleanIni(ini);
+  if (!ini) ini = String.fromCharCode(65 + rnd(0, 25)) + String.fromCharCode(65 + rnd(0, 25));
+  const L = [...ini];
+  for (let g = 0; g < 60; g++) {
+    let w;
+    if (L.length === 1) w = [pickOf(FUN[L[0]].a), pickOf(FUN[L[0]].n)];
+    else if (L.length === 2) w = [pickOf(FUN[L[0]].a), pickOf(FUN[L[1]].n)];
+    else w = [pickOf(FUN[L[0]].a), pickOf(FUN[L[1]].a), pickOf(FUN[L[2]].n)];
+    const n = w.join(''); if (n.length <= NAME_MAX) return n;
+  }
+  return (FUN[L[0]].a[0] + FUN[L[L.length - 1]].n[0]).slice(0, NAME_MAX);
+}
+const randName = () => funName('');
+/* Is this name made of fun-name words for these initials? (the host checks this in "initials only" mode) */
+function isFunName(name, ini) {
+  ini = cleanIni(ini); if (!ini || typeof name !== 'string') return false;
+  const L = ini.length === 1 ? [ini, ini] : [...ini];
+  let rest = name;
+  for (let i = 0; i < L.length; i++) {
+    const list = i === L.length - 1 ? FUN[L[i]].n : FUN[L[i]].a;
+    const hit = list.filter(w => rest.startsWith(w)).sort((a, b) => b.length - a.length)[0];
+    if (!hit) return false; rest = rest.slice(hit.length);
+  }
+  return rest === '';
+}
+const NAME_MODES = { mixed: 'Type a fun name or generate one', initials: 'Generated from initials only', random: 'Fully random names' };
+const cleanName = s => String(s || '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
 
 function rollChest(points, hasOthers) {
   const m = points === 'double' ? 2 : 1;
@@ -726,7 +802,7 @@ V.home = () => {
       </form>
     </section>
     <section>
-      <div class="sec-head"><h2>My quizzes</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost" data-act="importCode">Import quiz code</button><button class="btn pink" data-act="newQuiz">+ New quiz</button></div></div>
+      <div class="sec-head"><h2>My quizzes</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost" data-act="importCode">Import quiz code</button><button class="btn white" data-act="csvImport" data-mode="new">Import CSV</button><button class="btn pink" data-act="newQuiz">+ New quiz</button></div></div>
       ${S.quizzes.length ? `<div class="qgrid">${S.quizzes.map(quizCard).join('')}</div>` : `<div class="empty"><h3>No quizzes yet</h3><p style="margin:8px 0 14px">Create one, or bring back the sample quiz.</p><button class="btn gold" data-act="newQuiz">+ New quiz</button> <button class="btn ghost" data-act="addSample">Add sample quiz</button></div>`}
     </section>
     ${modeNote()}
@@ -904,7 +980,10 @@ ACT.quizSettings = () => {
   const qz = curQuiz();
   openModal(`<div class="mhead"><h2>Quiz settings</h2><button class="x" data-act="closeEdModal" aria-label="Close">×</button></div>
   <label class="fld">Description<textarea class="in" data-f="qzDesc" rows="2" maxlength="500" placeholder="What is this quiz about?">${esc(qz.desc || '')}</textarea></label>
-  <h3>Import questions</h3>
+  <h3>Spreadsheet</h3>
+  <p class="muted">Add questions from a CSV file, or export this quiz to edit in Excel or Google Sheets.</p>
+  <div class="prow" style="justify-content:flex-start"><button class="btn gold" data-act="csvImport" data-mode="add">Import from CSV</button><button class="btn soft" data-act="csvExport">Export as CSV</button></div>
+  <h3>Paste questions</h3>
   <p class="muted">One question per line: <code>Question | *Right answer | Wrong | Wrong</code>. Star every correct answer. A single answer makes a type-answer question, and <code>True | False</code> makes a true-or-false question.</p>
   <textarea class="in" id="impText" rows="5" placeholder="What is 2 + 2? | 3 | *4 | 5 | 22"></textarea>
   <button class="btn purple" data-act="doImport">Add these questions</button>
@@ -914,6 +993,209 @@ ACT.quizSettings = () => {
   <button class="btn gold" data-act="copyCode">Copy quiz code</button>`);
 };
 ACT.closeEdModal = () => { closeModal(); if (S.view === 'editor') V.editor(); };
+
+/* ============================================================
+   CSV import / export
+   Reads Kahoot- and Blooket-style sheets saved as CSV: header names are
+   matched loosely, and a sheet with no header is read as
+   Question, Answer 1-4, Time, Correct (an optional leading # column is skipped).
+   ============================================================ */
+function parseCSVWith(text, delim) {
+  const rows = []; let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; continue; }
+    if (c === '"' && !cell.trim()) { cell = ''; q = true; continue; }
+    if (c === delim) { row.push(cell); cell = ''; continue; }
+    if (c === '\r') continue;
+    if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; continue; }
+    cell += c;
+  }
+  row.push(cell); rows.push(row);
+  return rows.map(r => r.map(s => s.replace(/\r/g, '').trim())).filter(r => r.some(Boolean));
+}
+function parseCSV(text) {
+  text = String(text).replace(/^\uFEFF/, '');
+  // Pick the delimiter that splits most rows into the most columns (median of the first 12 rows)
+  let best = null, bestScore = -1;
+  for (const d of [',', ';', '\t']) {
+    const rows = parseCSVWith(text, d);
+    const lens = rows.slice(0, 12).map(r => r.length).sort((a, b) => a - b);
+    const score = lens.length ? lens[Math.floor(lens.length / 2)] : 0;
+    if (score > bestScore) { best = rows; bestScore = score; }
+  }
+  return best || [];
+}
+function csvCol(h) {
+  h = String(h || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!h) return null;
+  if (/correct|right answer/.test(h)) return { k: 'correct' };
+  let m = h.match(/(?:answer|option|choice|ans)\s*#?\s*(\d)/); if (m) return { k: 'ans', n: +m[1] };
+  m = h.match(/^(?:answer|option|choice)?\s*([a-f])$/); if (m) return { k: 'ans', n: m[1].charCodeAt(0) - 96 };
+  if (/time/.test(h)) return { k: 'time' };
+  if (/select/.test(h)) return { k: 'select' };
+  if (/type|kind|format/.test(h)) return { k: 'type' };
+  if (/point|gold|score/.test(h)) return { k: 'points' };
+  if (/question|prompt/.test(h) && !/#|number|^q ?no\.?$/.test(h)) return { k: 'q' };
+  return null;
+}
+function nearestTime(raw) {
+  const s = String(raw || '').toLowerCase().trim();
+  if (!s) return 20;
+  if (/none|no limit|unlimited|off/.test(s)) return 0;
+  let n = parseFloat(s); if (!isFinite(n) || n <= 0) return 20;
+  if (n > 1000) n = n / 1000;
+  return TIMES.filter(t => t > 0).reduce((a, t) => Math.abs(t - n) < Math.abs(a - n) ? t : a, 20);
+}
+function csvToQuestions(text) {
+  const rows = parseCSV(text), stats = { qs: [], skipped: 0, trunc: 0 };
+  const cut = (s, n) => { s = String(s || ''); if (s.length > n) stats.trunc++; return s.slice(0, n); };
+  let hi = -1, map = null;
+  for (let r = 0; r < Math.min(rows.length, 15); r++) {
+    const cols = rows[r].map(csvCol);
+    if (cols.some(c => c && c.k === 'q') && cols.some(c => c && (c.k === 'ans' || c.k === 'correct'))) { hi = r; map = cols; break; }
+  }
+  if (!map) {
+    map = [{ k: 'q' }, { k: 'ans', n: 1 }, { k: 'ans', n: 2 }, { k: 'ans', n: 3 }, { k: 'ans', n: 4 }, { k: 'time' }, { k: 'correct' }];
+    if (rows.length && rows.every(r => /^\d+\.?$/.test(r[0] || ''))) map.unshift(null);
+  }
+  const qCol = map.findIndex(c => c && c.k === 'q');
+  for (const r of rows.slice(hi + 1)) {
+    const get = k => { const i = k === 'q' ? qCol : map.findIndex(c => c && c.k === k); return i >= 0 ? (r[i] || '').trim() : ''; };
+    const text = get('q');
+    if (!text) { if (r.some(Boolean)) stats.skipped++; continue; }
+    const ans = [];
+    map.forEach((c, i) => { if (c && c.k === 'ans' && c.n >= 1 && c.n <= 6 && ans[c.n - 1] === undefined) ans[c.n - 1] = (r[i] || '').trim(); });
+    const filled = []; for (let n = 0; n < ans.length; n++) if (ans[n]) filled.push({ n: n + 1, text: ans[n] });
+    const rawCorrect = get('correct'), typeRaw = get('type').toLowerCase(), selRaw = get('select').toLowerCase(), ptsRaw = get('points').toLowerCase();
+    const matchText = t => filled.find(a => norm(a.text) === norm(t));
+    const correctNs = new Set(), extra = [];
+    let tokens = rawCorrect.split(/\s*(?:[,;|&]|\band\b)\s*/i).map(s => s.trim()).filter(Boolean);
+    if (rawCorrect && !/^[\d\s,;|&]+$/.test(rawCorrect)) { const w = matchText(rawCorrect); if (w) { correctNs.add(w.n); tokens = []; } }
+    for (const t of tokens) {
+      if (/^\d+$/.test(t) && ans[+t - 1]) correctNs.add(+t);
+      else if (/^[a-f]$/i.test(t) && ans[t.toLowerCase().charCodeAt(0) - 97] && !matchText(t)) correctNs.add(t.toLowerCase().charCodeAt(0) - 96);
+      else { const m = matchText(t); if (m) correctNs.add(m.n); else extra.push(t); }
+    }
+    let type = 'quiz', select = 'single';
+    if (/true|false|t\/f|^tf$|boolean/.test(typeRaw)) type = 'tf';
+    else if (/type|typing|open|short|fill|input|text/.test(typeRaw)) type = 'type';
+    else if (/puzzle|order|sequence|sort|rank/.test(typeRaw)) type = 'puzzle';
+    else if (/multi-?select|multiple select|select all|checkbox|^multi$|multiple answers/.test(typeRaw)) select = 'multi';
+    else if (!typeRaw) {
+      const low = filled.map(a => norm(a.text));
+      if (filled.length === 2 && low.includes('true') && low.includes('false')) type = 'tf';
+      else if (filled.length <= 1) type = 'type';
+    }
+    if (/multi/.test(selRaw)) select = 'multi';
+    const q = mkQ({ text: cut(text, LIMITS.q), time: nearestTime(get('time')), points: /double|2x|x2|^2$/.test(ptsRaw) ? 'double' : /none|^no\b|^0$|zero/.test(ptsRaw) ? 'none' : 'standard' });
+    q.type = type;
+    if (type === 'tf') {
+      let ok = null;
+      for (const n of correctNs) { const t = norm(ans[n - 1]); if (t === 'true') ok = true; else if (t === 'false') ok = false; }
+      if (ok === null) { const t = norm(extra[0] || rawCorrect); if (/^(true|t|yes|y)$/.test(t)) ok = true; else if (/^(false|f|no|n)$/.test(t)) ok = false; }
+      q.answers = [{ text: 'True', ok: ok === true }, { text: 'False', ok: ok === false }];
+    } else if (type === 'type') {
+      const seen = new Set(), acc = [];
+      for (const s of [...filled.map(a => a.text), ...extra]) { const k = norm(s); if (k && !seen.has(k)) { seen.add(k); acc.push(cut(s, LIMITS.typeA)); } }
+      q.accepted = acc.length ? acc.slice(0, LIMITS.accepted) : [''];
+    } else if (type === 'puzzle') {
+      let items = filled.map(a => a.text);
+      const order = rawCorrect.split(/[\s,;|>]+/).filter(Boolean);
+      if (order.length === items.length && order.every(t => /^\d+$/.test(t) && ans[+t - 1]) && new Set(order).size === order.length) items = order.map(t => ans[+t - 1]);
+      q.answers = items.slice(0, LIMITS.pzMax).map(t => ({ text: cut(t, LIMITS.pz), ok: false }));
+      while (q.answers.length < 2) q.answers.push({ text: '', ok: false });
+    } else {
+      q.select = select;
+      q.answers = filled.slice(0, LIMITS.maxAns).map(a => ({ text: cut(a.text, LIMITS.a), ok: correctNs.has(a.n) }));
+      while (q.answers.length < 2) q.answers.push({ text: '', ok: false });
+    }
+    stats.qs.push(q);
+  }
+  return stats;
+}
+const csvCell = v => { v = String(v ?? ''); return /[",\r\n]|^\s|\s$/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+function quizToCSV(qz) {
+  const maxA = Math.max(4, ...qz.questions.map(q => q.type === 'type' ? q.accepted.length : q.answers.length));
+  const head = ['Question', ...Array.from({ length: maxA }, (_, i) => `Answer ${i + 1}`), 'Correct answer(s)', 'Time limit (sec)', 'Type', 'Points'];
+  const rows = qz.questions.map(q => {
+    let ans, correct = '', type;
+    if (q.type === 'type') { ans = q.accepted.filter(Boolean); type = 'type answer'; }
+    else if (q.type === 'tf') { ans = ['True', 'False']; correct = q.answers[0] && q.answers[0].ok ? 'True' : q.answers[1] && q.answers[1].ok ? 'False' : ''; type = 'true/false'; }
+    else if (q.type === 'puzzle') { ans = q.answers.map(a => a.text); type = 'puzzle'; }
+    else { ans = q.answers.map(a => a.text); correct = q.answers.map((a, i) => a.ok ? i + 1 : 0).filter(Boolean).join(','); type = q.select === 'multi' ? 'multi' : 'quiz'; }
+    while (ans.length < maxA) ans.push('');
+    return [q.text, ...ans, correct, q.time || 'no limit', type, q.points];
+  });
+  return [head, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n';
+}
+async function offerDownload(filename, text) {
+  if (IN_ARTIFACT) {
+    let d = null; try { d = await window.claude.use('downloads'); } catch (e) {}
+    if (!d) return showTextFallback(filename, text);
+    try { const r = await d.save({ filename, data: text }); if (r && r.status === 'saved') toast('Saved', 'good'); }
+    catch (e) { if (e && (e.code === 'declined' || e.code === 'rate_limited')) return; showTextFallback(filename, text); }
+    return;
+  }
+  try {
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  } catch (e) { showTextFallback(filename, text); }
+}
+function showTextFallback(filename, text) {
+  openModal(`<div class="mhead"><h2>${esc(filename)}</h2><button class="x" data-act="closeModal" aria-label="Close">×</button></div><p class="muted">Downloads aren’t available here. Copy this text into a new file named ${esc(filename)}.</p><textarea class="in" id="fbText" rows="10" readonly>${esc(text)}</textarea><button class="btn gold" data-act="copyFb">Copy text</button>`);
+}
+ACT.copyFb = () => { const el = $('#fbText'); copyText(el.value, el); };
+ACT.csvTemplate = () => offerDownload('goldgrab-quiz-template.csv', quizToCSV(sampleQuiz()));
+ACT.csvExport = () => { const qz = curQuiz(); if (qz) offerDownload((qz.title || 'quiz').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60).toLowerCase() + '.csv', quizToCSV(qz)); };
+ACT.csvImport = b => {
+  const mode = b.dataset.mode === 'add' ? 'add' : 'new';
+  openModal(`<div class="mhead"><h2>${mode === 'add' ? 'Add questions from CSV' : 'Import a quiz from CSV'}</h2><button class="x" data-act="${mode === 'add' ? 'closeEdModal' : 'closeModal'}" aria-label="Close">×</button></div>
+  <p class="muted">One row per question. Save your spreadsheet as CSV from Excel, Google Sheets or Numbers. Kahoot and Blooket spreadsheet templates work too.</p>
+  <div class="csvwrap"><table><thead><tr><th>Question</th><th>Answer 1</th><th>Answer 2</th><th>Answer 3</th><th>Answer 4</th><th>Correct answer(s)</th><th>Time limit (sec)</th><th>Type</th><th>Points</th></tr></thead><tbody>
+    <tr><td>Which planet is the Red Planet?</td><td>Venus</td><td>Mars</td><td>Jupiter</td><td>Saturn</td><td>2</td><td>20</td><td>quiz</td><td>standard</td></tr>
+    <tr><td>Which are programming languages?</td><td>Python</td><td>Excel</td><td>Ruby</td><td>Photoshop</td><td>1,3</td><td>30</td><td>multi</td><td>standard</td></tr>
+    <tr><td>Chemical symbol for gold?</td><td>Au</td><td></td><td></td><td></td><td></td><td>20</td><td>type answer</td><td>double</td></tr>
+  </tbody></table></div>
+  <ul class="csvrules">
+    <li><b>Question</b> is required. <b>Answer 1</b> to <b>Answer 6</b> hold the choices.</li>
+    <li><b>Correct answer(s)</b>: the answer number, several numbers like <code>1,3</code>, or the answer text.</li>
+    <li><b>Time limit (sec)</b>: 5 to 240. Blank means 20 seconds.</li>
+    <li><b>Type</b> (optional): quiz, multi, true/false, type answer or puzzle. Blank means quiz, except True/False answers become true-or-false and a single answer becomes type answer. For puzzles, list the items in the right order.</li>
+    <li><b>Points</b> (optional): standard, double or none.</li>
+  </ul>
+  <div class="prow" style="justify-content:flex-start"><label class="btn gold" tabindex="0" data-filebtn>Choose CSV file<input type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" data-f="csv" data-mode="${mode}" hidden></label><button class="btn soft" data-act="csvTemplate">Download template</button></div>`);
+};
+document.addEventListener('keydown', e => { const l = e.target.closest && e.target.closest('[data-filebtn]'); if (l && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); const i = $('input[type=file]', l); if (i) i.click(); } });
+const readText = file => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = rej; fr.readAsText(file); });
+CHG.csv = async t => {
+  const f = t.files && t.files[0], mode = t.dataset.mode; t.value = ''; if (!f) return;
+  if (/\.(xlsx|xls|numbers|ods)$/i.test(f.name)) return toast('Save the spreadsheet as CSV first (File → Download or Save As → CSV)', 'bad');
+  let text; try { text = await readText(f); } catch (e) { return toast('Couldn’t read that file', 'bad'); }
+  const r = csvToQuestions(text);
+  if (!r.qs.length) return toast('No questions found. The file needs a Question column; the template shows the layout.', 'bad');
+  let added, qz, start;
+  if (mode === 'add' && curQuiz()) {
+    qz = curQuiz();
+    if (qz.questions.length === 1 && !qz.questions[0].text.trim()) qz.questions = [];
+    added = r.qs.slice(0, LIMITS.questions - qz.questions.length);
+    start = qz.questions.length; qz.questions.push(...added);
+  } else {
+    added = r.qs.slice(0, LIMITS.questions); start = 0;
+    qz = { id: uid(), title: f.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').trim().slice(0, 95) || 'Imported quiz', desc: '', created: Date.now(), questions: added };
+    S.quizzes.unshift(qz);
+  }
+  saveQuizzes(); closeModal();
+  const flagged = added.filter(validQ).length;
+  const firstBad = qz.questions.findIndex((q, i) => i >= start && validQ(q));
+  go('editor', { editId: qz.id, qIdx: firstBad >= 0 ? firstBad : start });
+  const notes = [];
+  if (r.qs.length > added.length) notes.push(`${r.qs.length - added.length} over the ${LIMITS.questions}-question limit left out`);
+  if (flagged) notes.push(`${flagged} need${flagged === 1 ? 's' : ''} a correct answer or more detail (marked with a dot)`);
+  if (r.trunc) notes.push('some text was shortened to fit the limits');
+  toast(`Imported ${added.length} question${added.length === 1 ? '' : 's'}${notes.length ? '. ' + notes.join('; ') + '.' : ''}`, flagged ? '' : 'good');
+};
 function quizCode(qz) { try { return btoa(unescape(encodeURIComponent(JSON.stringify({ title: qz.title, desc: qz.desc, questions: qz.questions })))); } catch (e) { return ''; } }
 ACT.copyCode = () => { const el = $('#codeOut'); copyText(el.value, el); };
 ACT.doImport = () => {
@@ -941,8 +1223,11 @@ ACT.doImport = () => {
 /* ============================================================
    Host setup
    ============================================================ */
-const DEFAULT_CFG = { endBy: 'time', minutes: 7, goal: 5000, lateJoin: true, randomNames: false, timers: true, showAnswers: true, shuffleQ: true, shuffleA: true };
+const DEFAULT_CFG = { endBy: 'time', minutes: 7, goal: 5000, lateJoin: true, nameMode: 'mixed', timers: true, showAnswers: true, shuffleQ: true, shuffleA: true };
 let CFG = Object.assign({}, DEFAULT_CFG, store.get('gg_cfg', {}));
+if (!CFG.nameV2) { CFG.nameMode = CFG.randomNames ? 'random' : 'mixed'; CFG.nameV2 = 1; }
+if (!NAME_MODES[CFG.nameMode]) CFG.nameMode = 'mixed';
+delete CFG.randomNames;
 ACT.hostSetup = b => { saveQuizzes(); go('hostSetup', { hostQuizId: b.dataset.id }); };
 V.hostSetup = () => {
   const qz = S.quizzes.find(q => q.id === S.hostQuizId); if (!qz) return go('home');
@@ -962,8 +1247,8 @@ V.hostSetup = () => {
       </section>
       <section class="card toggles">
         <h3>Options</h3>
+        <label class="fld">Player nicknames${sel('nameMode', Object.keys(NAME_MODES), v => NAME_MODES[v])}</label>
         ${tog('lateJoin', 'Allow late joining', 'Players can join after the game starts')}
-        ${tog('randomNames', 'Use random names', 'Players get a generated nickname')}
         ${tog('timers', 'Question timers', 'Use each question’s time limit')}
         ${tog('showAnswers', 'Show correct answers', 'After a wrong answer')}
         ${tog('shuffleQ', 'Shuffle questions', 'Each player gets their own order')}
@@ -975,7 +1260,7 @@ V.hostSetup = () => {
       <button class="btn gold big" data-act="startHost" ${ok ? '' : 'disabled'}>Open lobby</button></div>
   </div></main>`;
   app.querySelectorAll('[data-cfg]').forEach(el => el.addEventListener('change', () => {
-    const k = el.dataset.cfg; CFG[k] = el.type === 'checkbox' ? el.checked : +el.value; store.set('gg_cfg', CFG);
+    const k = el.dataset.cfg; CFG[k] = el.type === 'checkbox' ? el.checked : (isNaN(+el.value) ? el.value : +el.value); store.set('gg_cfg', CFG);
   }));
 };
 ACT.endBy = b => { CFG.endBy = b.dataset.v; store.set('gg_cfg', CFG); b.parentElement.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); $('#fMin').hidden = CFG.endBy !== 'time'; $('#fGoal').hidden = CFG.endBy !== 'gold'; };
@@ -1013,7 +1298,7 @@ const Net = {
     if (this.mode === 'room') {
       const r = await this.getRoom();
       try { const u = await window.claude.use('user'); if (u && typeof u.canEdit === 'function' && (await u.canEdit()) === false) throw new Error('noedit'); } catch (e) { if (e.message === 'noedit') throw e; }
-      await r.presence({ gghost: { pin }, gg: null });
+      await r.presence({ gghost: { pin, nameMode: H ? H.cfg.nameMode : 'mixed' }, gg: null });
       this.unsubs.push(r.onPeers(ch => this._hostPeers(ch), () => toast('Lost the live connection', 'bad')));
       this.drain = setInterval(() => this._drain(), 70);
       return;
@@ -1029,6 +1314,7 @@ const Net = {
     });
   },
   _hostConn(conn) {
+    conn.on('open', () => { try { conn.send({ t: 'hello', nameMode: H ? H.cfg.nameMode : 'mixed' }); } catch (e) {} });
     conn.on('data', d => {
       if (!d || typeof d !== 'object') return;
       if (d.t === 'join' && typeof d.cid === 'string') {
@@ -1084,6 +1370,8 @@ const Net = {
         un = r.onPeers(() => { if (hasHost()) { clearTimeout(t); un && un(); res(true); } });
       });
       if (!found) throw new Error('notfound');
+      const hp = r.peers().find(p => p.presence && p.presence.gghost && p.presence.gghost.pin === pin);
+      if (hp && P && NAME_MODES[hp.presence.gghost.nameMode]) P.nameMode = hp.presence.gghost.nameMode;
       this.unsubs.push(r.on('gg', msg => this._playerPkt(msg.data)));
       let gone = null;
       this.unsubs.push(r.onPeers(() => {
@@ -1164,7 +1452,7 @@ ACT.practiseInstead = () => { const qz = H && H.quiz; const cfg = H && H.cfg; st
 ACT.leaveHost = b => { const fn = () => { stopHosting(); go('home'); }; if (H && H.phase === 'play' && b) arm(b, 'Tap to confirm', fn); else fn(); };
 
 const sorted = () => Object.values(H.players).sort((a, b) => b.gold - a.gold || a.joinedAt - b.joinedAt);
-function uniqueName(n) { const base = n; let k = 2; const taken = x => Object.values(H.players).some(p => p.name.toLowerCase() === x.toLowerCase()); while (taken(n)) n = base.slice(0, 13) + k++; return n; }
+function uniqueName(n) { const base = n; let k = 2; const taken = x => Object.values(H.players).some(p => p.name.toLowerCase() === x.toLowerCase()); while (taken(n)) n = base.slice(0, NAME_MAX - 2) + k++; return n; }
 const meta = () => ({ endBy: H.cfg.endBy, goal: H.cfg.goal, left: H.phase === 'play' && H.cfg.endBy === 'time' ? Math.max(0, H.endsAt - Date.now()) : 0 });
 const stateMsg = () => Object.assign({ t: 'state', phase: H.phase, players: Object.values(H.players).map(p => [p.cid, p.name, p.av, p.gold, p.connected ? 1 : 0]) }, meta());
 function queueState(now) {
@@ -1186,7 +1474,16 @@ function hostMsg(cid, m) {
     if (H.phase === 'end') return reject('This game has already ended.');
     if (H.phase !== 'lobby' && !H.cfg.lateJoin) return reject('This game has already started and isn’t taking new players.');
     if (Object.keys(H.players).length >= LIMITS.players) return reject('This game is full.');
-    const name = uniqueName(H.cfg.randomNames ? randName() : (cleanName(m.name) || randName()));
+    let name;
+    const taken = x => Object.values(H.players).some(p => p.name.toLowerCase() === x.toLowerCase());
+    if (H.cfg.nameMode === 'random') name = randName();
+    else if (H.cfg.nameMode === 'initials') {
+      const ini = cleanIni(m.ini), want = String(m.name || '');
+      name = ini && isFunName(want, ini) && !taken(want) ? want : '';
+      for (let g = 0; !name && g < 20; g++) { const c = funName(ini); if (!taken(c)) name = c; }
+      name = name || funName(ini);
+    } else name = cleanName(m.name) || randName();
+    name = uniqueName(name);
     const np = H.players[cid] = { cid, name, av: clamp(Math.floor(+m.av) || 0, 0, AV_DEF.length - 1), gold: 0, correct: 0, answered: 0, credits: 0, connected: true, bot: false, joinedAt: Date.now() };
     welcome(np); sfx.join(); queueState(); return;
   }
@@ -1414,12 +1711,12 @@ let P = null;
 function myCid() { let c = sget('gg_cid'); if (!c) { c = 'p' + uid() + uid(); sset('gg_cid', c); } return c; }
 function newPlayer(pin) {
   const saved = store.get('gg_me', {});
-  return { pin, cid: myCid(), name: saved.name || '', av: Number.isInteger(saved.av) ? saved.av : rnd(0, AV_DEF.length - 1), gold: 0, players: [], phase: 'lobby', joined: false, quiz: null, cfg: {}, order: [], pos: -1, endBy: 'time', goal: 0, endsAt: 0 };
+  return { pin, cid: myCid(), name: saved.name || '', nameMode: 'mixed', ini: '', av: Number.isInteger(saved.av) ? saved.av : rnd(0, AV_DEF.length - 1), gold: 0, players: [], phase: 'lobby', joined: false, quiz: null, cfg: {}, order: [], pos: -1, endBy: 'time', goal: 0, endsAt: 0 };
 }
 async function playerConnect(pin) {
   if (H) stopHosting();
-  P = newPlayer(pin);
   Net.reset(); Net.mode = IN_ARTIFACT ? 'room' : 'peer';
+  P = newPlayer(pin);
   go('pconnecting');
   try { await Net.join(pin, { onMsg: playerMsg, onClose: playerClosed }); }
   catch (e) {
@@ -1448,27 +1745,48 @@ V.pconnecting = () => { app.innerHTML = `${topbar()}<main class="play center"><d
 V.pmsg = () => { app.innerHTML = `${topbar()}<main class="play center"><div class="card msgcard"><h2>${esc(S.pmsgTitle || 'Heads up')}</h2><p>${esc(S.pmsg)}</p><button class="btn gold" data-act="pHome">Back to home</button></div></main>`; S.pmsgTitle = ''; };
 ACT.pHome = () => { Net.reset(); P = null; clearHash(); go('home'); };
 V.pprofile = () => {
+  const mode = P.nameMode || 'mixed';
+  let nameUI = '';
+  if (mode === 'random') {
+    nameUI = `<h2 style="text-align:center">Pick your critter</h2><p class="muted" style="text-align:center">The host is giving everyone a random fun name.</p>`;
+  } else {
+    const ro = mode === 'initials';
+    nameUI = `<h2 style="text-align:center">Who are you?</h2>
+    <label class="fld">Fun name<input class="in funin" id="nameIn" data-f="nickName" maxlength="${NAME_MAX}" autocomplete="off" placeholder="${ro ? 'Generate one below' : 'Type a fun name'}" value="${esc(P.name)}" ${ro ? 'readonly' : ''}></label>
+    <div class="ordiv"><span>${ro ? 'make one from your initials' : 'or make one from your initials'}</span></div>
+    <div class="inirow"><label class="fld">Initials<input class="in iniin" id="iniIn" data-f="iniIn" maxlength="3" autocomplete="off" autocapitalize="characters" placeholder="SM" value="${esc(P.ini)}"></label><button type="button" class="btn purple" data-act="genName">Generate</button></div>`;
+  }
   app.innerHTML = `${topbar('', `Game ${pinFmt(P.pin)}`)}
   <main class="play"><form class="card profile" id="profForm">
-    <h2 style="text-align:center">Who are you?</h2>
-    <div class="namerow"><input class="in" id="nameIn" maxlength="15" autocomplete="off" placeholder="Nickname" value="${esc(P.name)}" aria-label="Nickname"><button type="button" class="btn purple" data-act="spinName">Random</button></div>
-    <h3 style="font-size:18px">Pick your critter</h3>
+    ${nameUI}
+    ${mode === 'random' ? '' : '<h3 style="font-size:18px">Pick your critter</h3>'}
     <div class="avgrid" role="radiogroup">${AV_DEF.map((d, i) => `<button type="button" class="avpick ${i === P.av ? 'on' : ''}" data-act="pickAv" data-i="${i}" role="radio" aria-checked="${i === P.av}" title="${esc(d[2])}">${avatarSVG(i)}</button>`).join('')}</div>
     <button class="btn gold big" type="submit">Join game</button>
   </form></main>`;
+  const ii = $('#iniIn'); if (ii) ii.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ACT.genName(); } });
   $('#profForm').onsubmit = e => {
     e.preventDefault();
-    P.name = cleanName($('#nameIn').value) || randName();
-    store.set('gg_me', { name: P.name, av: P.av });
-    Net.psend({ t: 'join', cid: P.cid, name: P.name, av: P.av });
-    go('pjoining');
+    if (mode === 'initials' && !isFunName(P.name, P.ini)) { toast('Type your initials and press Generate', 'bad'); const i = $('#iniIn'); if (i) i.focus(); return; }
+    if (mode === 'random') P.name = '';
+    else P.name = cleanName(P.name) || funName(P.ini);
+    store.set('gg_me', { name: mode === 'mixed' ? P.name : (store.get('gg_me', {}).name || ''), av: P.av });
+    joinMsg(); go('pjoining');
   };
 };
-ACT.spinName = () => { $('#nameIn').value = randName(); sfx.tick(); };
+const joinMsg = () => Net.psend({ t: 'join', cid: P.cid, name: P.name, ini: P.ini || '', av: P.av });
+INP.nickName = t => { P.name = t.value; };
+INP.iniIn = t => { const v = cleanIni(t.value); if (t.value !== v) t.value = v; P.ini = v; };
+ACT.genName = () => {
+  const i = $('#iniIn'); P.ini = cleanIni(i ? i.value : P.ini);
+  if (!P.ini) { toast('Type your initials first, like SM', 'bad'); if (i) i.focus(); return; }
+  let n; do { n = funName(P.ini); } while (n === P.name && Math.random() < .95);
+  P.name = n; const o = $('#nameIn'); if (o) { o.value = n; o.classList.remove('pop'); void o.offsetWidth; o.classList.add('pop'); }
+  sfx.tick();
+};
 ACT.pickAv = b => { P.av = +b.dataset.i; app.querySelectorAll('.avpick').forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-checked', String(on)); }); sfx.tick(); };
 V.pjoining = () => {
   app.innerHTML = `${topbar()}<main class="play center"><div class="waitcard"><div class="spinner"></div><h2>Joining…</h2></div></main>`;
-  IV.push(setTimeout(() => { if (!P.joined) Net.psend({ t: 'join', cid: P.cid, name: P.name, av: P.av }); }, 4000));
+  IV.push(setTimeout(() => { if (!P.joined) joinMsg(); }, 4000));
   IV.push(setTimeout(() => { if (!P.joined) go('pmsg', { pmsg: 'The host didn’t answer. Check the Game ID and try again.', pmsgTitle: 'No answer' }); }, 12000));
 };
 V.pwait = () => {
@@ -1479,9 +1797,13 @@ const minisHTML = () => P.players.filter(x => x.cid !== P.cid).slice(0, 40).map(
 function playerMsg(m) {
   if (!P || !m || typeof m !== 'object') return;
   switch (m.t) {
+    case 'hello': {
+      if (NAME_MODES[m.nameMode] && m.nameMode !== P.nameMode) { P.nameMode = m.nameMode; if (S.view === 'pprofile') V.pprofile(); }
+      break;
+    }
     case 'welcome': {
       if (P.joined && P.phase === 'play' && S.view !== 'pwait') { P.gold = m.gold || 0; updGold(); return; }
-      P.joined = true; P.name = String(m.name || P.name).slice(0, 15); P.av = m.av | 0; P.gold = m.gold || 0;
+      P.joined = true; P.name = String(m.name || P.name).slice(0, NAME_MAX); P.av = m.av | 0; P.gold = m.gold || 0;
       P.quiz = m.quiz && Array.isArray(m.quiz.qs) ? m.quiz : { title: '', qs: [] };
       P.cfg = m.cfg || {}; setMeta(m); P.phase = m.phase;
       if (m.phase === 'play') startPlaying(); else if (m.phase === 'end') go('pend'); else go('pwait');
@@ -1490,7 +1812,7 @@ function playerMsg(m) {
     case 'reject': go('pmsg', { pmsg: String(m.reason || 'The host couldn’t add you.'), pmsgTitle: 'Can’t join' }); Net.reset(); break;
     case 'kick': go('pmsg', { pmsg: 'The host removed you from this game.', pmsgTitle: 'Removed' }); Net.reset(); break;
     case 'state': {
-      P.players = (Array.isArray(m.players) ? m.players : []).map(a => ({ cid: String(a[0]), name: String(a[1]).slice(0, 15), av: a[2] | 0, gold: +a[3] || 0, on: !!a[4] }));
+      P.players = (Array.isArray(m.players) ? m.players : []).map(a => ({ cid: String(a[0]), name: String(a[1]).slice(0, NAME_MAX), av: a[2] | 0, gold: +a[3] || 0, on: !!a[4] }));
       setMeta(m);
       const me = P.players.find(x => x.cid === P.cid);
       if (me && me.gold !== P.gold) { P.gold = me.gold; updGold(); }

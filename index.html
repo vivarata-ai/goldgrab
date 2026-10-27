@@ -342,9 +342,23 @@ body.flash-bad{background-color:#c9323f;background-image:none}
 .trow .tname{font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .trow .tgold{font-family:var(--f-display);font-size:20px;display:flex;align-items:center;gap:6px}
 .resbox{display:grid;gap:14px;justify-items:center;text-align:center;color:#fff}
-.resbox .big{font-family:var(--f-display);font-size:clamp(44px,10vw,76px);line-height:1;text-shadow:0 5px 0 rgba(0,0,0,.2)}
-.resbox .big.up{color:var(--gold)} .resbox .big.down{color:#ff9aa5}
+.resbox .delta{font-family:var(--f-display);font-size:clamp(44px,10vw,76px);line-height:1;text-shadow:0 5px 0 rgba(0,0,0,.2)}
+.resbox .delta.up{color:var(--gold)} .resbox .delta.down{color:#ff9aa5}
 .resbox p{font-size:20px;max-width:30ch}
+#netbar{position:fixed;top:calc(8px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:70;background:var(--ink);color:#fff;font-weight:800;font-size:14px;padding:8px 14px;border-radius:999px;display:flex;gap:8px;align-items:center;box-shadow:0 4px 0 rgba(0,0,0,.25);white-space:nowrap}
+.spinner.sm{width:34px;height:34px;border-width:5px}
+.spinner.xs{width:16px;height:16px;border-width:3px}
+.spinner.dark{border-color:var(--line);border-top-color:var(--a5)}
+.fbgold{font-family:var(--f-display);font-size:clamp(40px,9vw,60px);color:var(--gold);text-shadow:0 4px 0 rgba(0,0,0,.2);display:flex;align-items:center;gap:10px;min-height:64px}
+.fbstreak{font-weight:900;background:rgba(0,0,0,.2);padding:6px 14px;border-radius:999px}
+.restotal{font-size:18px!important;opacity:.9}.restotal b{color:var(--gold)}
+.chest.opening{animation:shake .35s ease-in-out infinite}
+.chest.dimmed{opacity:.35;animation:none}
+@keyframes shake{0%,100%{transform:rotate(0)}25%{transform:rotate(-7deg) scale(1.06)}75%{transform:rotate(7deg) scale(1.06)}}
+.rulesgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
+.rulesgrid>div{background:var(--soft);border-radius:12px;padding:10px 12px;display:grid;gap:2px;font-size:14px}
+.rulesgrid b{font-family:var(--f-display);font-weight:400;font-size:17px}
+.rulesgrid .t-gain b{color:#b77d00}.rulesgrid .t-steal b{color:#d43a73}.rulesgrid .t-swap b{color:var(--a2)}.rulesgrid .t-lose b{color:var(--bad)}.rulesgrid .t-meh b{color:var(--muted)}
 .spinner{width:54px;height:54px;border-radius:50%;border:6px solid rgba(255,255,255,.25);border-top-color:var(--gold);animation:spin .8s linear infinite}
 .profile{display:grid;gap:16px}
 .profile .namerow{display:flex;gap:8px}
@@ -412,6 +426,7 @@ body.flash-bad{background-color:#c9323f;background-image:none}
 </head>
 <body>
 <div id="app"></div>
+<div id="netbar" hidden role="status"><span class="spinner xs"></span>Reconnecting to the game… your gold is safe.</div>
 <div id="toasts" aria-live="polite"></div>
 <div id="modal" hidden></div>
 <canvas id="confetti" hidden></canvas>
@@ -645,24 +660,79 @@ function isFunName(name, ini) {
 const NAME_MODES = { mixed: 'Type a fun name or generate one', initials: 'Generated from initials only', random: 'Fully random names' };
 const cleanName = s => String(s || '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
 
-function rollChest(points, hasOthers) {
-  const m = points === 'double' ? 2 : 1;
-  for (let guard = 0; guard < 50; guard++) {
+/* ============================================================
+   Gold engine. Runs on the host only; phones just show what the host decided.
+   Every number is a whole number of gold and never goes below 0.
+   ============================================================ */
+const GOLD = {
+  base: 10,            // every correct answer
+  streakStep: 5,       // +5 more for each answer in a row
+  streakCap: 25,       // streak bonus tops out at +25 (so +35 per answer)
+  gains: [10, 20, 30, 40, 50, 75, 100],
+  tierEvery: 4,        // chest gold grows ×2, ×3 … every 4 correct answers
+  tierMax: 5,
+  minForPct: 40,       // +25%, Double, Triple and Lose 25% need 40+ gold
+  minForLose50: 80
+};
+const tierOf = p => Math.min(GOLD.tierMax, 1 + Math.floor((p.correct || 0) / GOLD.tierEvery));
+const pointsMult = points => points === 'double' ? 2 : 1;
+function answerReward(p, points) { return (GOLD.base + Math.min(GOLD.streakCap, Math.max(0, (p.streak || 1) - 1) * GOLD.streakStep)) * pointsMult(points); }
+/* Roll one chest for player p. Chests that would do nothing right now are re-rolled. */
+function rollChestFor(p, others, points) {
+  const g = p.gold, m = pointsMult(points);
+  const stealable = others.some(o => o.gold > 0), swappable = others.some(o => o.gold > g);
+  for (let k = 0; k < 80; k++) {
     const r = Math.random() * 100;
-    if (r < 44) { const amt = [10, 20, 30, 40, 50, 75, 100][rnd(0, 6)] * m; return { kind: 'gain', amt, label: '+' + amt, tone: 'gain' }; }
-    if (r < 52) return { kind: 'pct', p: 25, label: '+25%', tone: 'gain' };
-    if (r < 59) return { kind: 'mult', x: 2, label: 'Double', tone: 'gain' };
-    if (r < 62) return { kind: 'mult', x: 3, label: 'Triple', tone: 'gain' };
-    if (r < 70) return { kind: 'lose', p: 25, label: 'Lose 25%', tone: 'lose' };
-    if (r < 74) return { kind: 'lose', p: 50, label: 'Lose 50%', tone: 'lose' };
-    if (r < 81) return { kind: 'none', label: 'Nothing', tone: 'meh' };
-    if (!hasOthers) continue;
-    if (r < 94) { const p = Math.random() < .7 ? 10 : 25; return { kind: 'steal', p, label: `Steal ${p}%`, tone: 'steal' }; }
-    return { kind: 'swap', label: 'Swap!', tone: 'swap' };
+    if (r < 40) return { kind: 'gain', amt: pickOf(GOLD.gains) * tierOf(p) * m };
+    if (r < 48) { if (g >= GOLD.minForPct) return { kind: 'pct', p: 25 }; continue; }
+    if (r < 55) { if (g >= GOLD.minForPct) return { kind: 'mult', x: 2 }; continue; }
+    if (r < 58) { if (g >= GOLD.minForPct) return { kind: 'mult', x: 3 }; continue; }
+    if (r < 66) { if (g >= GOLD.minForPct) return { kind: 'lose', p: 25 }; continue; }
+    if (r < 70) { if (g >= GOLD.minForLose50) return { kind: 'lose', p: 50 }; continue; }
+    if (r < 76) return { kind: 'none' };
+    if (r < 91) { if (stealable) return { kind: 'steal', p: Math.random() < .65 ? 10 : 25 }; continue; }
+    if (swappable) return { kind: 'swap' };
   }
-  return { kind: 'gain', amt: 10 * m, label: '+' + 10 * m, tone: 'gain' };
+  return { kind: 'gain', amt: 10 * m };
 }
-const chestSub = c => ({ gain: 'Gold!', pct: 'Bonus on your total', mult: c.x === 3 ? 'Your gold ×3' : 'Your gold ×2', lose: 'Ouch', none: 'Empty chest', steal: 'Take from a rival', swap: 'Trade totals' }[c.kind] || '');
+const chestView = c => ({
+  label: { gain: '+' + fmt(c.amt), pct: '+25%', mult: c.x === 3 ? 'Triple!' : 'Double!', lose: `Lose ${c.p}%`, none: 'Nothing', steal: `Steal ${c.p}%`, swap: 'Swap!' }[c.kind],
+  sub: { gain: 'Gold!', pct: 'Bonus on your total', mult: c.x === 3 ? 'Your gold ×3' : 'Your gold ×2', lose: 'Ouch', none: 'Empty chest', steal: 'Take from a rival', swap: 'Trade totals' }[c.kind],
+  tone: { gain: 'gain', pct: 'gain', mult: 'gain', lose: 'lose', none: 'meh', steal: 'steal', swap: 'swap' }[c.kind]
+});
+/* Apply a chest to player p (t = chosen rival for steal/swap). Mutates gold; returns what happened. */
+function applyChest(p, c, t) {
+  const before = p.gold; let text = 'Empty chest. Nothing this time.', hit = null, feedTxt = null, feedKind = 'gain';
+  switch (c.kind) {
+    case 'gain': p.gold += c.amt; text = `+${fmt(c.amt)} gold`; break;
+    case 'pct': { const a = Math.floor(p.gold * c.p / 100); p.gold += a; text = `25% bonus: +${fmt(a)} gold`; break; }
+    case 'mult': { const a = p.gold * (c.x - 1); p.gold += a; text = `${c.x === 3 ? 'Tripled' : 'Doubled'} your gold: +${fmt(a)}`; if (a) feedTxt = `${p.name} ${c.x === 3 ? 'tripled' : 'doubled'} their gold to ${fmt(p.gold)}`; break; }
+    case 'lose': { const a = Math.floor(p.gold * c.p / 100); p.gold -= a; text = `Lost ${c.p}% of your gold: −${fmt(a)}`; break; }
+    case 'steal': {
+      if (!t || t === p || t.gold <= 0) { text = 'Nobody had any gold to steal'; break; }
+      const a = Math.max(1, Math.floor(t.gold * c.p / 100)); t.gold -= a; p.gold += a;
+      text = `You stole ${fmt(a)} gold from ${t.name}`; feedTxt = `${p.name} stole ${fmt(a)} gold from ${t.name}`; feedKind = 'steal';
+      hit = { t, text: `${p.name} stole ${fmt(a)} of your gold!` }; break;
+    }
+    case 'swap': {
+      if (!t || t === p) { text = 'Nobody to swap with'; break; }
+      const mine = p.gold; p.gold = t.gold; t.gold = mine;
+      text = `You swapped gold with ${t.name}`; feedTxt = `${p.name} swapped gold with ${t.name} (${fmt(mine)} ↔ ${fmt(p.gold)})`; feedKind = 'swap';
+      hit = { t, text: `${p.name} swapped gold with you! You now have ${fmt(t.gold)}.` }; break;
+    }
+  }
+  return { delta: p.gold - before, text, hit, feedTxt, feedKind };
+}
+const goldRulesHTML = () => `<div class="rulesgrid">
+  <div><b>Right answer</b><span>+${GOLD.base} gold, plus ${GOLD.streakStep} more for each answer in a row (up to +${GOLD.base + GOLD.streakCap}). Double-gold questions pay twice.</span></div>
+  <div><b>Then open 1 of 3 chests</b><span>The host decides what’s inside, so every phone sees the same numbers.</span></div>
+  <div class="t-gain"><b>+10 to +100</b><span>Gold. Grows ×2, ×3 … ×${GOLD.tierMax} every ${GOLD.tierEvery} right answers.</span></div>
+  <div class="t-gain"><b>+25% · Double · Triple</b><span>Boost your total. Only shows up once you have ${GOLD.minForPct}+ gold.</span></div>
+  <div class="t-steal"><b>Steal 10% or 25%</b><span>You pick a rival who has gold and take that share of it.</span></div>
+  <div class="t-swap"><b>Swap</b><span>Trade your whole total with a rival you pick. Only shows up when someone has more than you.</span></div>
+  <div class="t-lose"><b>Lose 25% or 50%</b><span>Ouch. Only when you have ${GOLD.minForPct}+ (or ${GOLD.minForLose50}+) gold.</span></div>
+  <div class="t-meh"><b>Nothing</b><span>An empty chest.</span></div>
+</div>`;
 
 /* ============================================================
    Quizzes
@@ -839,10 +909,11 @@ ACT.loadCode = () => {
   if (!qz) return toast('That code isn’t a quiz. Check you copied all of it.', 'bad');
   S.quizzes.unshift(qz); saveQuizzes(); closeModal(); go('home'); toast(`Added “${qz.title}”`, 'good');
 };
+ACT.goldRules = () => openModal(`<div class="mhead"><h2>How gold is calculated</h2><button class="x" data-act="closeModal" aria-label="Close">×</button></div>${goldRulesHTML()}`);
 ACT.help = () => {
   openModal(`<div class="mhead"><h2>How to play</h2><button class="x" data-act="closeModal" aria-label="Close">×</button></div>
   <div class="helpgrid">
-    <section><h3>The game</h3><p>Players answer at their own pace. Each right answer opens one of three chests: gold, a bonus, double or triple, a loss, or the chance to <b>steal</b> from or <b>swap</b> with another player. The game ends when time runs out, or when someone reaches the gold goal.</p></section>
+    <section><h3>The game</h3><p>Players answer at their own pace. The game ends when time runs out, or when someone reaches the gold goal.</p>${goldRulesHTML()}</section>
     <section><h3>Host</h3><ol><li>Pick a quiz and press <b>Host</b>.</li><li>Choose the end condition and options, then open the lobby.</li><li>Put the QR code and Game ID on screen. Press <b>Start</b> when everyone is in.</li></ol></section>
     <section><h3>Join</h3><ol><li>Scan the QR code, or enter the Game ID on the home screen.</li><li>Pick a nickname and a critter.</li><li>Answer, open chests, grab gold.</li></ol></section>
     <section><h3>Where it works</h3><p><b>On Claude:</b> players need to be signed in to Claude and have access to this page, so share it with them. Only you (or an editor) can host.</p><p><b>Anywhere:</b> upload the standalone .html file to a free static host such as GitHub Pages or Netlify Drop. Anyone can then join by phone, and devices connect peer-to-peer.</p><p><b>Practice:</b> “Practise with bots” runs a full game on one screen with no players needed.</p></section>
@@ -1236,7 +1307,7 @@ V.hostSetup = () => {
   const sel = (k, list, f) => `<select class="in" data-cfg="${k}">${list.map(v => `<option value="${v}" ${CFG[k] === v ? 'selected' : ''}>${f(v)}</option>`).join('')}</select>`;
   app.innerHTML = `${topbar(`<button class="btn ghost sm" data-act="home">Cancel</button>`, qz.title)}
   <main class="wrap"><div class="setup">
-    <section class="card modecard"><div class="art">${CHEST_SVG}</div><div><h2>Gold Rush</h2><p>Players answer at their own pace. Every right answer opens a chest. Grab gold, steal from rivals and swap fortunes until the clock runs out or someone hits the goal.</p><div class="rules"><span>+ gold</span><span>×2 / ×3</span><span>Steal 10–25%</span><span>Swap</span><span>Lose 25–50%</span></div></div></section>
+    <section class="card modecard"><div class="art">${CHEST_SVG}</div><div><h2>Gold Rush</h2><p>Players answer at their own pace. Every right answer opens a chest. Grab gold, steal from rivals and swap fortunes until the clock runs out or someone hits the goal.</p><div class="rules"><span>+10 per right answer</span><span>Streak bonus</span><span>Chests: gold, +25%, ×2, ×3</span><span>Steal 10–25%</span><span>Swap</span><span>Lose 25–50%</span></div><button class="btn white sm" data-act="goldRules" style="margin-top:10px">How gold is calculated</button></div></section>
     <div class="setgrid">
       <section class="card" style="display:grid;gap:14px">
         <h3>How the game ends</h3>
@@ -1283,7 +1354,7 @@ const Net = {
     if (this.drain) clearInterval(this.drain); this.drain = null;
     if (this.room) { try { this.room.presence({ gg: null, gghost: null }).catch(() => {}); } catch (e) {} }
     if (this.peer) { try { this.peer.destroy(); } catch (e) {} } this.peer = null;
-    this.conns = {}; this.q = []; this.pendingState = null; this.lastSeq = {}; this.peerMap = {}; this.bufs = {}; this.out = []; this.seq = 0; this.sid = uid(); this.h = null; this.conn = null;
+    this.conns = {}; this.connCid = new WeakMap(); this.q = []; this.pendingState = null; this.lastSeq = {}; this.peerMap = {}; this.bufs = {}; this.out = []; this.seq = 0; this.sid = uid(); this.h = null; this.conn = null;
   },
   async getRoom() {
     if (this.room) return this.room;
@@ -1314,16 +1385,18 @@ const Net = {
     });
   },
   _hostConn(conn) {
+    const cidOf = this.connCid || (this.connCid = new WeakMap());
     conn.on('open', () => { try { conn.send({ t: 'hello', nameMode: H ? H.cfg.nameMode : 'mixed' }); } catch (e) {} });
     conn.on('data', d => {
       if (!d || typeof d !== 'object') return;
       if (d.t === 'join' && typeof d.cid === 'string') {
         const old = this.conns[d.cid]; if (old && old !== conn) { try { old.close(); } catch (e) {} }
-        conn._cid = d.cid; this.conns[d.cid] = conn;
+        cidOf.set(conn, d.cid); this.conns[d.cid] = conn;
       }
-      if (conn._cid && this.h) this.h.onMsg(conn._cid, d);
+      const cid = cidOf.get(conn);
+      if (cid && this.h) this.h.onMsg(cid, d);
     });
-    conn.on('close', () => { if (conn._cid && this.conns[conn._cid] === conn) { delete this.conns[conn._cid]; this.h && this.h.onLeave(conn._cid); } });
+    conn.on('close', () => { const cid = cidOf.get(conn); if (cid && this.conns[cid] === conn) { delete this.conns[cid]; this.h && this.h.onLeave(cid); } });
     conn.on('error', () => {});
   },
   _hostPeers(ch) {
@@ -1376,24 +1449,38 @@ const Net = {
       let gone = null;
       this.unsubs.push(r.onPeers(() => {
         if (hasHost()) { clearTimeout(gone); gone = null; }
-        else if (!gone) gone = setTimeout(() => { if (!hasHost() && this.h) this.h.onClose(); }, 5000);
+        else if (!gone) gone = setTimeout(() => { if (!hasHost() && this.h) this.h.onClose(); }, 15000);
       }));
       return;
     }
     if (!window.Peer) throw new Error('nopeer');
-    await new Promise((res, rej) => {
+    await this._peerConnect(pin);
+  },
+  _peerConnect(pin) {
+    return new Promise((res, rej) => {
       const p = new window.Peer({ debug: 0 }); this.peer = p; let done = false;
-      const t = setTimeout(() => { if (!done) rej(new Error('timeout')); }, 15000);
+      const t = setTimeout(() => { if (!done) { try { p.destroy(); } catch (e) {} rej(new Error('timeout')); } }, 15000);
       p.on('open', () => {
         const c = p.connect('ggq-' + pin, { reliable: true, serialization: 'json' }); this.conn = c;
         c.on('open', () => { done = true; clearTimeout(t); res(); });
-        c.on('data', d => this.h && this.h.onMsg(d));
-        c.on('close', () => this.h && this.h.onClose());
+        c.on('data', d => { if (this.conn === c && this.h) this.h.onMsg(d); });
+        c.on('close', () => { if (this.conn === c && this.h && this.h.onDrop) this.h.onDrop(); });
         c.on('error', () => {});
       });
-      p.on('error', e => { if (!done) { clearTimeout(t); rej(e && e.type === 'peer-unavailable' ? new Error('notfound') : e); } });
+      p.on('error', e => { if (!done) { clearTimeout(t); try { p.destroy(); } catch (x) {} rej(e && e.type === 'peer-unavailable' ? new Error('notfound') : e); } });
     });
   },
+  /* Phone lost the host (screen locked, app switched, Wi-Fi blip): make a fresh connection with the same player id */
+  async reconnect() {
+    if (this.mode !== 'peer' || this._rc || !this.pin) return; this._rc = true;
+    try {
+      const old = this.peer; this.conn = null; try { old && old.destroy(); } catch (e) {}
+      await this._peerConnect(this.pin);
+      this.h && this.h.onReconnect && this.h.onReconnect();
+    } catch (e) { this.h && this.h.onReconnectFail && this.h.onReconnectFail(e); }
+    finally { this._rc = false; }
+  },
+  connected() { return this.mode === 'room' ? !!this.room : !!(this.conn && this.conn.open); },
   _playerPkt(d) {
     if (!d || d.pin !== this.pin) return;
     if (d.to !== '*' && d.to !== P.cid) return;
@@ -1484,80 +1571,83 @@ function hostMsg(cid, m) {
       name = name || funName(ini);
     } else name = cleanName(m.name) || randName();
     name = uniqueName(name);
-    const np = H.players[cid] = { cid, name, av: clamp(Math.floor(+m.av) || 0, 0, AV_DEF.length - 1), gold: 0, correct: 0, answered: 0, credits: 0, connected: true, bot: false, joinedAt: Date.now() };
+    const np = H.players[cid] = newRecord({ cid, name, av: clamp(Math.floor(+m.av) || 0, 0, AV_DEF.length - 1) });
     welcome(np); sfx.join(); queueState(); return;
   }
   if (!p) return;
-  if (m.t === 'ans') {
-    if (H.phase !== 'play') return;
-    const qi = Math.floor(+m.qi); const q = H.qs[qi]; if (!q) return;
-    p.answered++; if (m.ok) { p.correct++; if (q.points !== 'none') p.credits = Math.min(p.credits + 1, 3); }
-    H.qstats[qi][0]++; if (m.ok) H.qstats[qi][1]++;
-    refreshSoon(); return;
+  if (H.phase === 'play' && H.cfg.endBy === 'time' && Date.now() >= H.endsAt) endGame();
+  if (m.t === 'ping') { Net.send(cid, Object.assign({ t: 'pong', gold: p.gold, phase: H.phase }, meta())); return; }
+  if ((m.t === 'ans' || m.t === 'pick' || m.t === 'target') && typeof m.id === 'string') {
+    if (p.lastReply && p.lastReply.id === m.id) { Net.send(cid, p.lastReply.msg); return; }   // a resend: answer again, never apply twice
+    let body;
+    if (H.phase !== 'play') body = { closed: true };
+    else if (m.t === 'ans') body = hostAnswer(p, Math.floor(+m.qi), m.ok === true);
+    else if (m.t === 'pick') body = hostPick(p, Math.floor(+m.i));
+    else body = hostTarget(p, String(m.cid || ''));
+    const msg = Object.assign({ t: 'reply', id: m.id, kind: m.t, gold: p.gold }, body);
+    p.lastReply = { id: m.id, msg };
+    Net.send(cid, msg); queueState(); refreshSoon();
   }
-  if (m.t === 'act') {
-    if (H.phase !== 'play') return;
-    if (p.credits <= 0) { Net.send(cid, { t: 'res', text: 'That chest didn’t count.', delta: 0, gold: p.gold }); return; }
-    p.credits--;
-    const r = applyAct(p, m);
-    Net.send(cid, { t: 'res', text: r.text, delta: r.delta, gold: p.gold });
-    queueState(); checkGoal(); return;
+}
+const newRecord = o => Object.assign({ gold: 0, correct: 0, answered: 0, streak: 0, pending: null, pendingTarget: null, lastReply: null, connected: true, bot: false, joinedAt: Date.now() }, o);
+function hostAnswer(p, qi, ok) {
+  const q = H.qs[qi]; if (!q) return { ok: false, base: 0, chests: 0 };
+  p.answered++; H.qstats[qi][0]++;
+  if (!ok) { p.streak = 0; return { ok: false, base: 0, chests: 0 }; }
+  p.correct++; H.qstats[qi][1]++; p.streak++;
+  p.pendingTarget = null;
+  if (q.points === 'none') { p.pending = null; return { ok: true, base: 0, chests: 0, streak: p.streak }; }
+  const base = answerReward(p, q.points); p.gold += base;
+  p.pending = { points: q.points };
+  checkGoal();
+  return { ok: true, base, chests: 3, streak: p.streak };
+}
+const eligibleTargets = (p, kind) => Object.values(H.players).filter(o => o !== p && (kind === 'swap' || o.gold > 0)).sort((a, b) => b.gold - a.gold);
+function hostPick(p, i) {
+  if (!p.pending) return { done: true, delta: 0, text: 'That chest was already opened.' };
+  const others = Object.values(H.players).filter(o => o !== p);
+  const chests = [0, 1, 2].map(() => rollChestFor(p, others, p.pending.points));
+  i = clamp(i || 0, 0, 2); const c = chests[i], views = chests.map(chestView);
+  p.pending = null;
+  if (c.kind === 'steal' || c.kind === 'swap') {
+    const ts = eligibleTargets(p, c.kind);
+    if (ts.length) { p.pendingTarget = { c, views, i }; return { need: true, chests: views, chosen: i, steal: c.kind === 'steal', pct: c.p || 0, targets: ts.map(o => [o.cid, o.name, o.av, o.gold]) }; }
   }
+  return finishChest(p, c, null, views, i);
+}
+function hostTarget(p, cid) {
+  const pt = p.pendingTarget; if (!pt) return { done: true, delta: 0, text: 'That chest was already opened.' };
+  p.pendingTarget = null;
+  const ts = eligibleTargets(p, pt.c.kind); const t = ts.find(o => o.cid === cid) || ts[0] || null;
+  return finishChest(p, pt.c, t, pt.views, pt.i);
+}
+function finishChest(p, c, t, views, i) {
+  const r = applyChest(p, c, t);
+  if (r.feedTxt) feed(r.feedTxt, r.feedKind, p);
+  if (r.hit && !r.hit.t.bot) Net.send(r.hit.t.cid, { t: 'hit', text: r.hit.text, gold: r.hit.t.gold });
+  checkGoal();
+  return { done: true, delta: r.delta, text: r.text, chests: views, chosen: i };
 }
 function hostLeave(cid) {
   if (!H) return; const p = H.players[cid]; if (!p) return;
   if (H.phase === 'lobby') delete H.players[cid]; else p.connected = false;
   queueState();
 }
-function applyAct(p, a) {
-  const before = p.gold; let text = 'Nothing this time';
-  const t = a.target != null ? H.players[a.target] : null;
-  switch (a.kind) {
-    case 'gain': { const amt = clamp(Math.floor(+a.amt) || 0, 0, 200); p.gold += amt; text = `+${fmt(amt)} gold`; break; }
-    case 'pct': { const amt = Math.floor(p.gold * .25); p.gold += amt; text = `+25% bonus: +${fmt(amt)} gold`; break; }
-    case 'mult': { const x = a.x === 3 ? 3 : 2; p.gold *= x; text = x === 3 ? 'Triple gold!' : 'Double gold!'; if (p.gold > before) feed(`${p.name} ${x === 3 ? 'tripled' : 'doubled'} their gold`, 'gain', p); break; }
-    case 'lose': { const pc = a.p === 50 ? 50 : 25; const amt = Math.floor(p.gold * pc / 100); p.gold -= amt; text = `Lost ${pc}%: −${fmt(amt)} gold`; break; }
-    case 'steal': {
-      if (!t || t === p) { text = 'Nobody to steal from'; break; }
-      const pc = a.p === 25 ? 25 : 10; const amt = Math.floor(t.gold * pc / 100);
-      if (!amt) { text = `${t.name} had no gold to steal`; feed(`${p.name} tried to rob ${t.name} and came up empty`, 'steal', p); break; }
-      t.gold -= amt; p.gold += amt; text = `You stole ${fmt(amt)} gold from ${t.name}`;
-      feed(`${p.name} stole ${fmt(amt)} gold from ${t.name}`, 'steal', p);
-      if (!t.bot) Net.send(t.cid, { t: 'hit', text: `${p.name} stole ${fmt(amt)} of your gold!`, gold: t.gold });
-      break;
-    }
-    case 'swap': {
-      if (!t || t === p) { text = 'Nobody to swap with'; break; }
-      [p.gold, t.gold] = [t.gold, p.gold]; text = `You swapped gold with ${t.name}`;
-      feed(`${p.name} swapped gold with ${t.name}`, 'swap', p);
-      if (!t.bot) Net.send(t.cid, { t: 'hit', text: `${p.name} swapped gold with you!`, gold: t.gold });
-      break;
-    }
-  }
-  return { text, delta: p.gold - before };
-}
 function feed(text, kind, p) { H.feed.unshift({ text, kind, av: p.av, id: uid() }); H.feed.length = Math.min(H.feed.length, 8); refreshSoon(); }
 function checkGoal() { if (H && H.phase === 'play' && H.cfg.endBy === 'gold' && Object.values(H.players).some(p => p.gold >= H.cfg.goal)) endGame(); }
 function addBot(silent) {
   if (Object.keys(H.players).length >= LIMITS.players) return toast('The game is full', 'bad');
   const cid = 'bot-' + uid();
-  H.players[cid] = { cid, name: uniqueName(randName()), av: rnd(0, AV_DEF.length - 1), gold: 0, correct: 0, answered: 0, credits: 0, connected: true, bot: true, joinedAt: Date.now(), nextAt: Date.now() + rnd(1500, 5000) };
+  H.players[cid] = newRecord({ cid, name: uniqueName(randName()), av: rnd(0, AV_DEF.length - 1), bot: true, nextAt: Date.now() + rnd(1500, 5000) });
   if (!silent) sfx.join();
   queueState();
 }
 function botTurn(p, now) {
   p.nextAt = now + rnd(3500, 9000);
-  const qi = rnd(0, H.qs.length - 1), q = H.qs[qi], ok = Math.random() < .72;
-  p.answered++; H.qstats[qi][0]++;
-  if (ok) { p.correct++; H.qstats[qi][1]++; }
-  if (ok && q.points !== 'none') {
-    const others = Object.values(H.players).filter(o => o !== p);
-    const c = rollChest(q.points, others.length > 0);
-    if (c.kind === 'steal' || c.kind === 'swap') {
-      const rich = others.slice().sort((a, b) => b.gold - a.gold);
-      c.target = (Math.random() < .6 ? rich[0] : rich[rnd(0, rich.length - 1)]).cid;
-    }
-    applyAct(p, c); checkGoal();
+  const r = hostAnswer(p, rnd(0, H.qs.length - 1), Math.random() < .72);
+  if (r.chests && H && H.phase === 'play') {
+    const pr = hostPick(p, rnd(0, 2));
+    if (pr.need) { const ts = eligibleTargets(p, pr.steal ? 'steal' : 'swap'); const t = Math.random() < .6 ? ts[0] : pickOf(ts); hostTarget(p, t.cid); }
   }
   queueState();
 }
@@ -1581,7 +1671,7 @@ function endGame() {
   H.phase = 'end'; queueState(true); go('podium'); sfx.win();
 }
 function playAgain() {
-  for (const [cid, p] of Object.entries(H.players)) { if (!p.connected) { delete H.players[cid]; continue; } Object.assign(p, { gold: 0, correct: 0, answered: 0, credits: 0 }); }
+  for (const [cid, p] of Object.entries(H.players)) { if (!p.connected) { delete H.players[cid]; continue; } Object.assign(p, { gold: 0, correct: 0, answered: 0, streak: 0, pending: null, pendingTarget: null, lastReply: null }); }
   H.phase = 'lobby'; H.feed = []; H.qstats = H.qs.map(() => [0, 0]); queueState(true); go('lobby');
 }
 const refreshSoon = () => { if (!H || H._rf) return; H._rf = setTimeout(() => { if (H) { H._rf = null; refreshHostUI(); } }, 250); };
@@ -1716,9 +1806,9 @@ function newPlayer(pin) {
 async function playerConnect(pin) {
   if (H) stopHosting();
   Net.reset(); Net.mode = IN_ARTIFACT ? 'room' : 'peer';
-  P = newPlayer(pin);
+  P = newPlayer(pin); RQ.q = []; RQ.active = null; startHealth();
   go('pconnecting');
-  try { await Net.join(pin, { onMsg: playerMsg, onClose: playerClosed }); }
+  try { await Net.join(pin, { onMsg: playerMsg, onClose: playerClosed, onDrop: () => { if (P) P.lastHeard = 0; }, onReconnect: playerReconnected, onReconnectFail: playerReconnectFailed }); }
   catch (e) {
     const m = e && e.message;
     go('pmsg', { pmsg: m === 'notfound' ? `We couldn’t find game ${pinFmt(pin)}. Check the Game ID on the host’s screen.` : m === 'noroom' ? 'Live games here need you to be signed in to Claude, with access to this page. Ask the host to share it with you.' : errText(e), pmsgTitle: 'Can’t join yet' });
@@ -1743,7 +1833,7 @@ function updGold(bump) {
 }
 V.pconnecting = () => { app.innerHTML = `${topbar()}<main class="play center"><div class="waitcard"><div class="spinner"></div><h2>Finding game ${pinFmt(P.pin)}…</h2></div></main>`; };
 V.pmsg = () => { app.innerHTML = `${topbar()}<main class="play center"><div class="card msgcard"><h2>${esc(S.pmsgTitle || 'Heads up')}</h2><p>${esc(S.pmsg)}</p><button class="btn gold" data-act="pHome">Back to home</button></div></main>`; S.pmsgTitle = ''; };
-ACT.pHome = () => { Net.reset(); P = null; clearHash(); go('home'); };
+ACT.pHome = () => { clearInterval(healthT); setNetBar(false); Net.reset(); P = null; clearHash(); go('home'); };
 V.pprofile = () => {
   const mode = P.nameMode || 'mixed';
   let nameUI = '';
@@ -1794,9 +1884,47 @@ V.pwait = () => {
 };
 const minisHTML = () => P.players.filter(x => x.cid !== P.cid).slice(0, 40).map(x => `<span title="${esc(x.name)}">${avatarSVG(x.av)}</span>`).join('');
 
+/* Requests to the host go one at a time and are resent until the host replies,
+   so a dropped message can never lose gold. The host answers a resend without applying it twice. */
+const RQ = { q: [], active: null };
+function request(msg, cb) { RQ.q.push({ id: uid() + uid(), msg, cb }); pumpRQ(); }
+function pumpRQ() { if (RQ.active || !RQ.q.length) return; RQ.active = RQ.q.shift(); sendActive(); }
+function sendActive() { const a = RQ.active; if (!a) return; a.sentAt = Date.now(); Net.psend(Object.assign({}, a.msg, { id: a.id })); }
+function onReply(m) {
+  const a = RQ.active; if (!a || m.id !== a.id) return;
+  RQ.active = null;
+  try { a.cb && a.cb(m); } catch (e) { console.error(e); }
+  pumpRQ();
+}
+let healthT = null;
+function startHealth() {
+  clearInterval(healthT);
+  healthT = setInterval(() => {
+    if (!P || !P.joined || P.phase === 'end') { setNetBar(false); return; }
+    const now = Date.now(), quiet = now - (P.lastHeard || 0);
+    if (Net.mode === 'peer') {
+      if (now - (P.lastPing || 0) > 3000) { P.lastPing = now; Net.psend({ t: 'ping' }); }
+      if (quiet > 8000) { setNetBar(true); if (now - (P.lastRc || 0) > 5000) { P.lastRc = now; Net.reconnect(); } }
+    } else if (quiet > 15000) setNetBar(true);
+    if (RQ.active && now - RQ.active.sentAt > 2500) sendActive();
+  }, 1000);
+}
+function setNetBar(on) { const b = $('#netbar'); if (b && b.hidden === on) b.hidden = !on; }
+function playerReconnected() { if (!P) return; P.rcFails = 0; joinMsg(); sendActive(); }
+function playerReconnectFailed(e) {
+  if (!P) return; P.rcFails = (P.rcFails || 0) + 1;
+  if (P.rcFails >= 8 && e && e.message === 'notfound') { clearInterval(healthT); setNetBar(false); go('pmsg', { pmsg: 'The host’s game isn’t there any more. It may have been closed.', pmsgTitle: 'Game closed' }); }
+}
+
 function playerMsg(m) {
   if (!P || !m || typeof m !== 'object') return;
+  P.lastHeard = Date.now(); setNetBar(false);
   switch (m.t) {
+    case 'reply': {
+      if (typeof m.gold === 'number') { P.gold = m.gold; updGold(true); }
+      onReply(m); break;
+    }
+    case 'pong': { if (typeof m.gold === 'number' && !RQ.active) { P.gold = m.gold; updGold(); } setMeta(m); break; }
     case 'hello': {
       if (NAME_MODES[m.nameMode] && m.nameMode !== P.nameMode) { P.nameMode = m.nameMode; if (S.view === 'pprofile') V.pprofile(); }
       break;
@@ -1809,13 +1937,13 @@ function playerMsg(m) {
       if (m.phase === 'play') startPlaying(); else if (m.phase === 'end') go('pend'); else go('pwait');
       break;
     }
-    case 'reject': go('pmsg', { pmsg: String(m.reason || 'The host couldn’t add you.'), pmsgTitle: 'Can’t join' }); Net.reset(); break;
-    case 'kick': go('pmsg', { pmsg: 'The host removed you from this game.', pmsgTitle: 'Removed' }); Net.reset(); break;
+    case 'reject': clearInterval(healthT); go('pmsg', { pmsg: String(m.reason || 'The host couldn’t add you.'), pmsgTitle: 'Can’t join' }); Net.reset(); break;
+    case 'kick': clearInterval(healthT); go('pmsg', { pmsg: 'The host removed you from this game.', pmsgTitle: 'Removed' }); Net.reset(); break;
     case 'state': {
       P.players = (Array.isArray(m.players) ? m.players : []).map(a => ({ cid: String(a[0]), name: String(a[1]).slice(0, NAME_MAX), av: a[2] | 0, gold: +a[3] || 0, on: !!a[4] }));
       setMeta(m);
       const me = P.players.find(x => x.cid === P.cid);
-      if (me && me.gold !== P.gold) { P.gold = me.gold; updGold(); }
+      if (me && me.gold !== P.gold && !RQ.active) { P.gold = me.gold; updGold(); }
       if (!P.joined) break;
       if (m.phase === 'play' && P.phase !== 'play') { P.phase = 'play'; startPlaying(); }
       else if (m.phase === 'end' && P.phase !== 'end') { P.phase = 'end'; go('pend'); sfx.win(); }
@@ -1823,16 +1951,11 @@ function playerMsg(m) {
       else if (S.view === 'pwait') { const el = $('#minis'); if (el) el.innerHTML = minisHTML(); }
       break;
     }
-    case 'res': {
-      P.gold = +m.gold || 0; S.res = { text: String(m.text || ''), delta: +m.delta || 0 };
-      if (S.view === 'pres') { V.pres(); if (S.res.delta > 0) sfx.ok(); else if (S.res.delta < 0) sfx.bad(); }
-      updGold(true); break;
-    }
     case 'hit': { P.gold = +m.gold || 0; updGold(true); toast(String(m.text || ''), 'bad'); sfx.steal(); break; }
   }
 }
 function setMeta(m) { if (m.endBy) P.endBy = m.endBy; if (m.goal) P.goal = m.goal; if (m.left) P.endsAt = Date.now() + m.left; }
-function playerClosed() { if (P && P.phase !== 'end' && S.view !== 'pmsg' && S.view !== 'home') go('pmsg', { pmsg: 'The host closed the game.', pmsgTitle: 'Game closed' }); }
+function playerClosed() { if (P && P.phase !== 'end' && S.view !== 'pmsg' && S.view !== 'home') { clearInterval(healthT); setNetBar(false); go('pmsg', { pmsg: 'The host closed the game.', pmsgTitle: 'Game closed' }); } }
 
 /* ---------- question loop ---------- */
 function startPlaying() { P.order = []; P.pos = -1; nextQ(); }
@@ -1844,7 +1967,7 @@ function nextQ() {
   let opts = q.answers.map((_, i) => i);
   if (q.type === 'puzzle') { do { opts = shuffle(opts); } while (opts.length > 1 && opts.every((v, k) => v === k)); }
   else if (q.type === 'quiz' && P.cfg.shuffleA) opts = shuffle(opts);
-  P.cur = { qi, q, opts, picked: [], done: false }; P.chests = null; P.chosen = -1;
+  P.cur = { qi, q, opts, picked: [], done: false }; P.chest = null;
   go('pq');
 }
 V.pq = () => {
@@ -1892,58 +2015,77 @@ function checkAnswer(q, r) {
 }
 function submitAnswer(r, timeout) {
   if (!P.cur || P.cur.done) return; P.cur.done = true;
-  const ok = !timeout && checkAnswer(P.cur.q, r);
-  Net.psend({ t: 'ans', qi: P.cur.qi, ok });
+  const ok = !timeout && checkAnswer(P.cur.q, r), cur = P.cur;
+  S.fb = { ok, timeout: !!timeout, got: false, base: 0, chests: 0, streak: 0 };
+  const fb = S.fb;
+  request({ t: 'ans', qi: cur.qi, ok }, m => {
+    if (m.closed) return;
+    Object.assign(fb, { got: true, base: m.base || 0, chests: m.chests || 0, streak: m.streak || 0 });
+    if (S.fb === fb && S.view === 'pfb') V.pfb();
+  });
   if (ok) sfx.ok(); else sfx.bad();
-  go('pfb', { fb: { ok, timeout: !!timeout } });
+  go('pfb');
 }
 V.pfb = () => {
-  const { ok, timeout } = S.fb, q = P.cur.q, chest = ok && q.points !== 'none';
+  const f = S.fb, ok = f.ok, q = P.cur.q;
   document.body.classList.add(ok ? 'flash-good' : 'flash-bad');
-  app.innerHTML = `${pTop()}<main class="play fb ${ok ? 'good' : 'bad'}"><div class="fbcard"><div class="fbicon">${ok ? '✓' : '✕'}</div><h1>${ok ? 'Correct!' : timeout ? 'Time’s up!' : 'Incorrect'}</h1>
-    ${!ok && P.cfg.showAnswers ? `<p class="fbans">Answer: <b>${esc(correctText(q))}</b></p>` : ''}
-    ${ok && !chest ? '<p class="fbans">No gold on this question.</p>' : ''}
-    <button class="btn white big" data-act="${chest ? 'toChest' : 'nextQ'}">${chest ? 'Open a chest' : 'Next question'}</button></div></main>`;
-  pClock();
-  if (chest) IV.push(setTimeout(() => go('pchest'), 1200));
+  let mid = '', btn = '';
+  if (!ok) { mid = P.cfg.showAnswers ? `<p class="fbans">Answer: <b>${esc(correctText(q))}</b></p>` : ''; btn = `<button class="btn white big" data-act="nextQ">Next question</button>`; }
+  else if (!f.got) mid = `<div class="fbgold"><div class="spinner sm"></div></div>`;
+  else {
+    mid = f.base ? `<div class="fbgold">+${fmt(f.base)} <i class="coin"></i></div>${f.streak > 1 ? `<p class="fbstreak">${f.streak} in a row! Streak bonus included.</p>` : ''}` : '<p class="fbans">No gold on this question.</p>';
+    btn = f.chests ? `<button class="btn white big" data-act="toChest">Open a chest</button>` : `<button class="btn white big" data-act="nextQ">Next question</button>`;
+  }
+  app.innerHTML = `${pTop()}<main class="play fb ${ok ? 'good' : 'bad'}"><div class="fbcard"><div class="fbicon">${ok ? '✓' : '✕'}</div><h1>${ok ? 'Correct!' : f.timeout ? 'Time’s up!' : 'Incorrect'}</h1>${mid}${btn}</div></main>`;
+  if (!IV.length) pClock();
+  if (ok && f.got && f.chests && !f.auto) { f.auto = true; IV.push(setTimeout(() => { if (S.view === 'pfb' && S.fb === f) go('pchest'); }, 1400)); }
 };
 ACT.toChest = () => go('pchest');
 ACT.nextQ = () => nextQ();
 V.pchest = () => {
-  if (!P.chests) { const others = P.players.some(x => x.cid !== P.cid); P.chests = [0, 1, 2].map(() => rollChest(P.cur.q.points, others)); P.chosen = -1; }
-  const rev = P.chosen >= 0, c = rev ? P.chests[P.chosen] : null;
-  app.innerHTML = `${pTop()}<main class="play chestscreen"><h1 class="ctitle">${rev ? esc(c.label) : 'Choose a chest!'}</h1>
-    <div class="chests">${P.chests.map((x, i) => rev
-      ? `<div class="chest open ${i === P.chosen ? 'chosen' : 'other'} t-${x.tone}" style="animation-delay:${i === P.chosen ? 0 : .25}s"><div class="cval">${esc(x.label)}</div><div class="csub">${esc(chestSub(x))}</div></div>`
-      : `<button class="chest closed" data-act="pickChest" data-i="${i}" style="animation-delay:${i * .2}s" aria-label="Chest ${i + 1}">${CHEST_SVG}</button>`).join('')}</div>
-    ${rev ? '' : '<p class="hint">One of these could change everything.</p>'}</main>`;
-  pClock();
-  if (rev) IV.push(setTimeout(afterChest, 1500));
+  if (!P.chest) P.chest = { phase: 'closed', chosen: -1, views: null };
+  const C = P.chest, rev = C.phase === 'revealed';
+  const title = C.phase === 'closed' ? 'Choose a chest!' : C.phase === 'opening' ? 'Opening…' : esc(C.views[C.chosen].label);
+  app.innerHTML = `${pTop()}<main class="play chestscreen"><h1 class="ctitle">${title}</h1>
+    <div class="chests">${[0, 1, 2].map(i => rev
+      ? `<div class="chest open ${i === C.chosen ? 'chosen' : 'other'} t-${C.views[i].tone}" style="animation-delay:${i === C.chosen ? 0 : .3}s"><div class="cval">${esc(C.views[i].label)}</div><div class="csub">${esc(C.views[i].sub)}</div></div>`
+      : `<button class="chest closed ${C.phase === 'opening' ? (i === C.chosen ? 'opening' : 'dimmed') : ''}" data-act="pickChest" data-i="${i}" style="animation-delay:${i * .2}s" aria-label="Chest ${i + 1}" ${C.phase === 'opening' ? 'disabled' : ''}>${CHEST_SVG}</button>`).join('')}</div>
+    ${C.phase === 'closed' ? '<p class="hint">One of these could change everything.</p>' : rev && C.need ? '<p class="hint">Now pick your target…</p>' : ''}</main>`;
+  if (!IV.length) pClock();
 };
-ACT.pickChest = b => { if (P.chosen >= 0) return; P.chosen = +b.dataset.i; sfx.chest(); go('pchest'); };
-function afterChest() {
-  const c = P.chests[P.chosen];
-  if (c.kind === 'steal' || c.kind === 'swap') { if (P.players.some(x => x.cid !== P.cid)) return go('ptarget'); return sendAct({ kind: 'none' }); }
-  sendAct(c);
-}
+ACT.pickChest = b => {
+  const C = P.chest; if (!C || C.phase !== 'closed') return;
+  C.phase = 'opening'; C.chosen = +b.dataset.i; sfx.chest(); V.pchest();
+  request({ t: 'pick', i: C.chosen }, m => {
+    if (m.closed || P.chest !== C) return;
+    if (!m.chests) { S.res = { delta: m.delta || 0, text: m.text || '', gold: P.gold }; return go('pres'); }
+    C.views = m.chests; C.phase = 'revealed';
+    if (m.need) { C.need = m; if (S.view === 'pchest') V.pchest(); IV.push(setTimeout(() => { if (P.chest === C) go('ptarget'); }, 1300)); return; }
+    S.res = { delta: m.delta || 0, text: m.text || '', gold: P.gold };
+    if (S.view === 'pchest') V.pchest();
+    IV.push(setTimeout(() => { if (P.chest === C) showResult(); }, 1400));
+  });
+};
+function showResult() { go('pres'); const d = S.res && S.res.delta; if (d > 0) sfx.ok(); else if (d < 0) sfx.bad(); }
 V.ptarget = () => {
-  const c = P.chests[P.chosen];
-  const others = P.players.filter(x => x.cid !== P.cid).sort((a, b) => b.gold - a.gold);
-  app.innerHTML = `${pTop()}<main class="play"><div class="card tcard"><h2>${c.kind === 'swap' ? 'Swap gold with…' : `Steal ${c.p}% from…`}</h2>
-    <div class="tlist">${others.map(o => `<button class="trow" data-act="pickTarget" data-cid="${esc(o.cid)}"><span class="tav">${avatarSVG(o.av)}</span><span class="tname">${esc(o.name)}</span><span class="tgold"><i class="coin"></i>${fmt(o.gold)}</span></button>`).join('')}</div></div></main>`;
-  pClock();
+  const n = P.chest.need, waiting = P.chest.targetSent;
+  app.innerHTML = `${pTop()}<main class="play"><div class="card tcard"><h2>${n.steal ? `Steal ${n.pct}% from…` : 'Swap gold with…'}</h2>
+    <p class="muted" style="text-align:center">${n.steal ? `You take ${n.pct}% of their gold.` : 'You trade your whole total with them.'} You have ${fmt(P.gold)} gold.</p>
+    <div class="tlist">${n.targets.map(o => `<button class="trow" data-act="pickTarget" data-cid="${esc(o[0])}" ${waiting ? 'disabled' : ''}><span class="tav">${avatarSVG(o[2])}</span><span class="tname">${esc(o[1])}</span><span class="tgold"><i class="coin"></i>${fmt(o[3])}</span></button>`).join('')}</div>
+    ${waiting ? '<div style="display:grid;place-items:center"><div class="spinner sm dark"></div></div>' : ''}</div></main>`;
+  if (!IV.length) pClock();
 };
-ACT.pickTarget = b => sendAct(P.chests[P.chosen], b.dataset.cid);
-function sendAct(c, target) {
-  const m = { t: 'act', kind: c.kind }; if (c.amt != null) m.amt = c.amt; if (c.p != null) m.p = c.p; if (c.x != null) m.x = c.x; if (target) m.target = target;
-  S.res = null; Net.psend(m); go('pres');
-  IV.push(setTimeout(() => { if (!S.res && S.view === 'pres') { S.res = { text: 'The host didn’t confirm that chest.', delta: 0 }; V.pres(); } }, 7000));
-}
+ACT.pickTarget = b => {
+  const C = P.chest; if (!C || !C.need || C.targetSent) return;
+  C.targetSent = true; V.ptarget();
+  request({ t: 'target', cid: b.dataset.cid }, m => {
+    if (m.closed || P.chest !== C) return;
+    S.res = { delta: m.delta || 0, text: m.text || '', gold: P.gold }; showResult();
+  });
+};
 V.pres = () => {
   const r = S.res;
-  app.innerHTML = `${pTop()}<main class="play center"><div class="resbox">${r
-    ? `<div class="big ${r.delta > 0 ? 'up' : r.delta < 0 ? 'down' : ''}">${r.delta > 0 ? '+' + fmt(r.delta) : r.delta < 0 ? '−' + fmt(-r.delta) : '±0'}</div><p>${esc(r.text)}</p><button class="btn gold big" data-act="nextQ">Next question</button>`
-    : `<div class="spinner"></div><p>Opening…</p>`}</div></main>`;
+  app.innerHTML = `${pTop()}<main class="play center"><div class="resbox"><div class="delta ${r.delta > 0 ? 'up' : r.delta < 0 ? 'down' : ''}">${r.delta > 0 ? '+' + fmt(r.delta) : r.delta < 0 ? '−' + fmt(-r.delta) : '±0'}</div><p>${esc(r.text)}</p><p class="restotal">You now have <b>${fmt(r.gold)}</b> gold</p><button class="btn gold big" data-act="nextQ">Next question</button></div></main>`;
   pClock();
 };
 V.pend = () => {
